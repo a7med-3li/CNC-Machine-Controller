@@ -1,0 +1,758 @@
+This Arduino sketch is designed to control a system comprising two stepper motors and a servo motor, interfacing through serial communication using the Consistent Overhead Byte Stuffing (COBS) protocol for message encoding and decoding. The system listens for specific events sent over the serial connection and performs corresponding actions, such as moving motors to specified positions, controlling LED indicators, and adjusting servo positions.
+
+Below is a comprehensive breakdown of the code, explaining each section and function in detail:
+
+---
+
+## **1. Libraries and Definitions**
+
+### **a. Including Libraries**
+
+```cpp
+#include <Servo.h>
+```
+
+- **Servo Library**: This library provides simple functions to control hobby servos. It allows the Arduino to send precise PWM (Pulse Width Modulation) signals to position the servo.
+
+### **b. Defining Constants and Pins**
+
+```cpp
+#define SPU 80 // Steps Per Unit
+#define PIN_SERVO D6
+```
+
+- **SPU (Steps Per Unit)**: Represents the number of micro-steps required per unit of movement based on the pulley, belt, and stepper motor specifications.
+  
+  - **Calculation Explained**:
+    - 20 teeth pulley
+    - 16 micro-steps
+    - 2mm per tooth belt
+    - 16 * 200 micro-steps per motor revolution
+    - Thus, `SPU = (16*200) / (20*2) = 80`
+
+- **PIN_SERVO**: The digital pin (D6) connected to the servo motor.
+
+```cpp
+Servo servo;
+```
+
+- **Servo Object**: Creates a `Servo` object named `servo` to control the servo motor.
+
+### **c. Type Definitions and Structures**
+
+```cpp
+typedef uint8_t (*CallbackFunction)(uint8_t*, int, uint8_t*);
+```
+
+- **CallbackFunction**: A pointer to a function that takes three parameters (`uint8_t*`, `int`, `uint8_t*`) and returns a `uint8_t`. This is used for event callbacks.
+
+```cpp
+struct EventCallback {
+  String event;
+  CallbackFunction callback;
+};
+```
+
+- **EventCallback Structure**: Associates an event name (`String event`) with its corresponding callback function (`CallbackFunction callback`).
+
+---
+
+## **2. Global Variables**
+
+```cpp
+float pos[] = {0, 0};
+```
+
+- **pos Array**: Tracks the current position of the system in two dimensions (x and y).
+
+### **Stepper Motor Pins**
+
+```cpp
+const int motor1StepPin = D10;
+const int motor1DirPin = D9;
+const int motor2StepPin = D8;
+const int motor2DirPin = D7;
+```
+
+- **Motor Pins**: Defines the pins connected to the step and direction inputs for two stepper motors.
+
+```cpp
+const int enablePin = D1;
+```
+
+- **Enable Pin**: Controls the enable state of the stepper drivers. Typically, setting this pin low (`0`) enables the motors, and high (`1`) disables them.
+
+---
+
+## **3. Setup Function**
+
+```cpp
+void setup() {  
+  servo.attach(PIN_SERVO);
+  Serial.begin(9600);
+  
+  // Registering Event Callbacks
+  on("go", go);
+  on("servo", moveServo);
+  on("motorsOn", motorsOn);
+  on("motorsOff", motorsOff);
+  on("moveTowardsOrigin", moveTowardsOrigin);
+  on("setOrigin", setOrigin);
+  
+  // Initialize Motor Pins
+  pinMode(motor1StepPin, OUTPUT);
+  pinMode(motor1DirPin, OUTPUT);
+  pinMode(motor2StepPin, OUTPUT);
+  pinMode(motor2DirPin, OUTPUT);
+  
+  pinMode(enablePin, OUTPUT); // Enable stepper drivers
+  pinMode(PIN_LED, OUTPUT);   // LED indicator pin
+  
+  startupIndicator(); // Indicate successful startup
+}
+```
+
+### **a. Servo Initialization**
+
+```cpp
+servo.attach(PIN_SERVO);
+```
+
+- **Attaching Servo**: Connects the servo object to the specified servo pin (`D6`).
+
+### **b. Serial Communication Setup**
+
+```cpp
+Serial.begin(9600);
+```
+
+- **Serial.begin**: Initializes serial communication at a baud rate of 9600 bits per second.
+
+### **c. Event Registration**
+
+```cpp
+on("go", go);
+on("servo", moveServo);
+on("motorsOn", motorsOn);
+on("motorsOff", motorsOff);
+on("moveTowardsOrigin", moveTowardsOrigin);
+on("setOrigin", setOrigin);
+```
+
+- **Event Registration**: Associates specific event names with their corresponding callback functions. This allows the system to respond to different commands received over serial communication.
+
+### **d. Pin Modes Configuration**
+
+```cpp
+pinMode(motor1StepPin, OUTPUT);
+pinMode(motor1DirPin, OUTPUT);
+pinMode(motor2StepPin, OUTPUT);
+pinMode(motor2DirPin, OUTPUT);
+pinMode(enablePin, OUTPUT);
+pinMode(PIN_LED, OUTPUT);
+```
+
+- **Setting Pin Modes**: Configures motor control pins and the enable pin as outputs. Also sets the LED indicator pin as an output.
+
+### **e. Startup Indicator**
+
+```cpp
+startupIndicator();
+```
+
+- **startupIndicator Function**: Provides visual feedback (flashing LED) to indicate that the system has successfully initialized.
+
+---
+
+## **4. Loop Function**
+
+```cpp
+void loop() {
+  readSerial();
+}
+```
+
+- **Continuous Serial Reading**: The `loop` function continuously calls `readSerial()`, ensuring that the system is always ready to receive and process incoming serial commands.
+
+---
+
+## **5. Startup Indicator Function**
+
+```cpp
+void startupIndicator() {
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(PIN_LED, 0);
+    delay(200);
+    digitalWrite(PIN_LED, 1);
+    delay(200);
+  }
+}
+```
+
+- **Visual Feedback**: Flashes the LED connected to `PIN_LED` three times with 200ms intervals to indicate that the system has started successfully.
+
+---
+
+## **6. Event Callback Functions**
+
+These functions are invoked in response to specific events received via serial communication.
+
+### **a. Light Control**
+
+```cpp
+uint8_t onLight(uint8_t* payload, int length, uint8_t* reply) {
+  uint8_t value = payload[0];
+  digitalWrite(PIN_LED, value);
+  return 0;
+}
+```
+
+- **Functionality**: Controls the LED's state based on the payload received.
+- **Parameters**:
+  - `payload`: Contains the value to set the LED (e.g., `0` for OFF, `1` for ON).
+  - `length`: Length of the payload.
+  - `reply`: Buffer for any response (unused here).
+- **Operation**: Sets the LED state according to the first byte of the payload.
+
+### **b. Motors Control**
+
+```cpp
+uint8_t motorsOn(uint8_t* payload, int length, uint8_t* reply) {
+  digitalWrite(enablePin, 0);
+  return 0;
+}
+
+uint8_t motorsOff(uint8_t* payload, int length, uint8_t* reply) {
+  digitalWrite(enablePin, 1);
+  return 0;
+}
+```
+
+- **Functionality**: Enables or disables the stepper motors.
+- **Parameters**: Same as above.
+- **Operation**:
+  - **`motorsOn`**: Sets `enablePin` to LOW to enable motors.
+  - **`motorsOff`**: Sets `enablePin` to HIGH to disable motors.
+
+### **c. Move Towards Origin**
+
+```cpp
+uint8_t moveTowardsOrigin(uint8_t* payload, int length, uint8_t* reply) {
+  float x = pos[0];
+  float y = pos[1];
+  
+  goTo(
+    x + ( x < 0 ? 10 : -10), 
+    y + ( y < 0 ? 10 : -10)
+  );
+
+  return 0;
+}
+```
+
+- **Functionality**: Adjusts the current position towards the origin (0,0) by increments/decrements of 10 units based on the current position's sign.
+- **Operation**:
+  - If `x` is negative, increases it by 10; otherwise, decreases by 10.
+  - Similarly adjusts `y`.
+  - Calls `goTo()` with the new target positions.
+
+### **d. Set Origin**
+
+```cpp
+uint8_t setOrigin(uint8_t* payload, int length, uint8_t* reply) {
+  pos[0] = 0;
+  pos[1] = 0;
+  return 0;
+}
+```
+
+- **Functionality**: Resets the current position to the origin `(0,0)`.
+
+### **e. Move Servo**
+
+```cpp
+uint8_t moveServo(uint8_t* payload, int length, uint8_t* reply) {
+  int angle = read_int(payload, 0);
+  servo.writeMicroseconds(angle);
+  return 0;
+}
+```
+
+- **Functionality**: Moves the servo to a specified position.
+- **Operation**:
+  - Reads a 4-byte integer from the payload starting at index `0`, representing the desired servo position in microseconds.
+  - Sends the value to the servo using `servo.writeMicroseconds(angle)`.
+
+### **f. Go To Position**
+
+```cpp
+uint8_t go(uint8_t* payload, int length, uint8_t* reply) {
+  float x = read_float(payload, 0);
+  float y = read_float(payload, 4);
+  
+  goTo(x, y);
+  
+  return 0;
+}
+```
+
+- **Functionality**: Moves the stepper motors to specified `(x, y)` coordinates.
+- **Operation**:
+  - Reads two 4-byte floats from the payload: `x` at index `0` and `y` at index `4`.
+  - Calls `goTo(x, y)` to execute the movement.
+
+---
+
+## **7. Serial Communication Handling**
+
+### **a. Buffer Variables**
+
+```cpp
+int bufferIndex = 0;
+uint8_t msgBuffer[100];
+```
+
+- **bufferIndex**: Tracks the current position in the message buffer.
+- **msgBuffer**: Array to store incoming serial bytes until a complete message is received.
+
+### **b. Reading Serial Data**
+
+```cpp
+void readSerial() {
+  while (Serial.available() > 0) {
+    uint8_t incoming = Serial.read(); 
+    msgBuffer[bufferIndex] = incoming;
+    
+    if (incoming != 0) {
+      bufferIndex++;
+      continue; // Continue reading if not end of message
+    }
+
+    // COBS Decoding
+    uint8_t decoded[bufferIndex];
+    cobs_decode(decoded, msgBuffer, bufferIndex);
+    
+    // Parsing Decoded Message
+    int i = 0;
+    uint8_t msgLength = decoded[i];
+    i++;
+    uint8_t msgArr[msgLength];
+    while (i < 1 + msgLength) {
+      msgArr[i-1] = decoded[i];
+      i++;
+    }
+
+    uint8_t payloadLength = decoded[i];
+    uint8_t payload[payloadLength];
+    i++;
+    while (i < 1 + msgLength + 1 + payloadLength) {
+      payload[i-1-msgLength-1] = decoded[i];
+      i++;
+    }
+
+    uint8_t msgCount = decoded[i];
+    
+    String msg = byteArrayToString(msgArr, msgLength);
+    
+    bool triggered = triggerEvent(msg, payload, payloadLength, msgCount);
+    
+    bufferIndex = 0; // Reset buffer for next message
+  }
+}
+```
+
+- **Functionality**: Continuously reads incoming serial data, decodes it using COBS, and triggers corresponding events.
+- **Operation**:
+  1. **Reading Bytes**: Reads bytes from the serial buffer one at a time and stores them in `msgBuffer`.
+  2. **Message Termination**: A byte with value `0` (`incoming != 0`) indicates the end of a message.
+  3. **COBS Decoding**: Decodes the received message buffer using `cobs_decode`.
+  4. **Parsing Decoded Message**:
+     - **Message Length (`msgLength`)**: First byte of the decoded message indicates the length of the event name.
+     - **Message Array (`msgArr`)**: Extracts the event name based on `msgLength`.
+     - **Payload Length (`payloadLength`)**: Next byte indicates the length of the payload.
+     - **Payload Data (`payload`)**: Extracts the payload data based on `payloadLength`.
+     - **Message Count (`msgCount`)**: Final byte indicates the message count for acknowledgment.
+  5. **Event Triggering**: Converts the event name from bytes to a `String` and calls `triggerEvent` with the event name, payload, and message count.
+  6. **Buffer Reset**: Resets `bufferIndex` to prepare for the next incoming message.
+
+### **c. Event Handling**
+
+```cpp
+const int MAX_EVENTS = 255; // Maximum number of events to store
+EventCallback eventCallbacks[MAX_EVENTS];
+int eventCount = 0;
+
+void on(String event, CallbackFunction callback) {
+  if (eventCount < MAX_EVENTS) {
+    eventCallbacks[eventCount].event = event;
+    eventCallbacks[eventCount].callback = callback;
+    eventCount = (eventCount + 1) % MAX_EVENTS;
+  } else {
+    // Optionally handle overflow
+  }
+}
+```
+
+- **Event Registration Function (`on`)**:
+  - **Purpose**: Registers a new event by associating an event name with its callback function.
+  - **Parameters**:
+    - `event`: The name of the event.
+    - `callback`: The function to call when the event is triggered.
+  - **Operation**: Adds the event to the `eventCallbacks` array if there's space.
+
+```cpp
+bool triggerEvent(String event, uint8_t* payload, int payloadLength, uint8_t msgCount) {
+  for (int i = 0; i < eventCount; i++) {
+    if (eventCallbacks[i].event == event) {
+      uint8_t reply_length = eventCallbacks[i].callback(payload, payloadLength, reply);
+      sendAck(msgCount, reply, reply_length);
+      return true;
+    }
+  }
+  return false;
+}
+```
+
+- **Event Triggering Function (`triggerEvent`)**:
+  - **Purpose**: Searches for the registered event and invokes its callback function if found.
+  - **Parameters**:
+    - `event`: The name of the event to trigger.
+    - `payload`: The payload data associated with the event.
+    - `payloadLength`: The length of the payload.
+    - `msgCount`: The message count for acknowledgment.
+  - **Operation**:
+    - Iterates through all registered events.
+    - If a matching event is found, calls its callback function with the payload.
+    - Sends an acknowledgment (`sendAck`) with the reply from the callback.
+    - Returns `true` if the event was found and triggered; otherwise, `false`.
+
+---
+
+## **8. Acknowledgment Sending**
+
+```cpp
+const int arrayLength = 7; // Fixed length for ACK
+uint8_t byteArray[arrayLength];
+
+void sendAck(uint8_t msgCount, uint8_t* reply, uint8_t length) {
+  byteArray[0] = 0x03;
+  byteArray[1] = 0x61; // 'a'
+  byteArray[2] = 0x63; // 'c'
+  byteArray[3] = 0x6B; // 'k'
+  byteArray[4] = 0x00;
+  byteArray[5] = msgCount;
+  byteArray[6] = 0x0A;
+  
+  Serial.write(byteArray, arrayLength);
+}
+```
+
+- **Functionality**: Constructs and sends an acknowledgment message for the received command.
+- **Operation**:
+  - **ACK Structure**:
+    - `0x03`: Start of the COBS-encoded frame.
+    - `0x61, 0x63, 0x6B`: ASCII characters "ack".
+    - `0x00`: Placeholder for length or a specific code.
+    - `msgCount`: The message count to correlate the acknowledgment with the received message.
+    - `0x0A`: Line feed character to signify the end.
+  - **Sending ACK**: Writes the `byteArray` containing the acknowledgment to the serial port.
+
+> **Note**: The current implementation of `sendAck` sends a fixed-length acknowledgment without including the actual `reply` payload from the callback functions. The commented-out sections suggest plans to include variable-length replies, but these are not active in the current code.
+
+---
+
+## **9. COBS Encoding and Decoding**
+
+### **a. COBS Encoding**
+
+```cpp
+void cobs_encode(uint8_t *dst, const uint8_t *src, size_t len) {
+    size_t read_index = 0;
+    size_t write_index = 1;
+    size_t code_index = 0;
+    uint8_t code = 1;
+
+    while (read_index < len) {
+        if (src[read_index] == 0) {
+            dst[code_index] = code;
+            code = 1;
+            code_index = write_index++;
+            read_index++;
+        } else {
+            dst[write_index++] = src[read_index++];
+            code++;
+            if (code == 0xFF) {
+                dst[code_index] = code;
+                code = 1;
+                code_index = write_index++;
+            }
+        }
+    }
+
+    dst[code_index] = code;
+
+    // Add trailing zero
+    if (write_index < len + 2) {
+        dst[write_index] = 0;
+    }
+}
+```
+
+- **Functionality**: Encodes raw data (`src`) into COBS format (`dst`).
+- **Parameters**:
+  - `dst`: Destination buffer for the encoded data.
+  - `src`: Source buffer containing the raw data.
+  - `len`: Length of the source data.
+- **Operation**:
+  - Iterates through the source data.
+  - Replaces zero bytes with the length of the non-zero byte sequence.
+  - Ensures that the encoded data does not contain any zero bytes, as COBS reserves zero as a packet delimiter.
+
+### **b. COBS Decoding**
+
+```cpp
+void cobs_decode(uint8_t *dst, const uint8_t *src, size_t len) {
+    size_t i, j, dst_i = 0;
+    for (i = 0; i < len;) {
+        uint8_t code = src[i++];
+        for (j = 1; j < code && i < len; j++) {
+            dst[dst_i++] = src[i++];
+        }
+        if (code < 0xFF && dst_i < len) {
+            dst[dst_i++] = 0;
+        }
+    }
+}
+```
+
+- **Functionality**: Decodes COBS-encoded data (`src`) back into raw format (`dst`).
+- **Parameters**:
+  - `dst`: Destination buffer for the decoded data.
+  - `src`: Source buffer containing the COBS-encoded data.
+  - `len`: Length of the encoded data.
+- **Operation**:
+  - Reads the `code` byte to determine how many bytes to copy from `src` to `dst`.
+  - Inserts a zero byte if the `code` is less than `0xFF`, indicating a zero was replaced during encoding.
+
+### **c. COBS Print Function (Potentially Buggy)**
+
+```cpp
+void cobs_print(const String& message) {
+  int length = message.length();
+  uint8_t byteArray[length + 1];
+  message.getBytes(byteArray, length + 1);
+
+  uint8_t encoded[length + 2];
+  cobs_encode(encoded, byteArray, length + 1);
+
+  Serial.write(encoded, length + 2);
+}
+```
+
+- **Functionality**: Encodes a `String` message using COBS and sends it over serial.
+- **Note**: The `TODO` comment suggests that this function might have bugs and needs further attention. Specifically, handling null terminators and ensuring the correct encoding length might be areas of concern.
+
+---
+
+## **10. Helper Functions**
+
+### **a. Reading Data Types from Buffers**
+
+```cpp
+float read_float(uint8_t* buffer, int index) {
+  uint8_t byte0 = buffer[index];
+  uint8_t byte1 = buffer[index+1];
+  uint8_t byte2 = buffer[index+2];
+  uint8_t byte3 = buffer[index+3];
+
+  uint8_t byteArray[] = {byte0, byte1, byte2, byte3};
+  float floatValue;
+  memcpy(&floatValue, &byteArray, sizeof(floatValue));
+
+  return floatValue;
+}
+
+int read_int(uint8_t* buffer, int index) {
+  uint8_t byte0 = buffer[index];
+  uint8_t byte1 = buffer[index+1];
+  uint8_t byte2 = buffer[index+2];
+  uint8_t byte3 = buffer[index+3];
+
+  uint8_t byteArray[] = {byte0, byte1, byte2, byte3};
+  int value;
+  memcpy(&value, &byteArray, sizeof(value));
+
+  return value;
+}
+```
+
+- **Functionality**: Reads 4-byte `float` and `int` values from a byte buffer starting at a specified index.
+- **Operation**:
+  - Extracts four consecutive bytes from the buffer.
+  - Copies them into a temporary array.
+  - Uses `memcpy` to reconstruct the `float` or `int` value from the byte array.
+
+### **b. Byte Array to String Conversion**
+
+```cpp
+String byteArrayToString(byte arr[], int length) {
+  String result = "";
+
+  for (int i = 0; i < length; i++) {
+    result += (char)arr[i];
+  }
+
+  return result;
+}
+```
+
+- **Functionality**: Converts a byte array into a `String` by interpreting each byte as an ASCII character.
+- **Operation**: Iterates through the byte array, casts each byte to a `char`, and appends it to the `result` string.
+
+### **c. Array Printing for Debugging**
+
+```cpp
+void printArray(String label, uint8_t* arr, int arrSize) {
+  Serial.print(label);
+  Serial.print("-BEGIN: ");
+  for (int i = 0; i < arrSize; i++) {
+    Serial.print(arr[i]);
+    Serial.print(", ");
+  }
+  Serial.print(label);
+  Serial.println("-END");
+}
+```
+
+- **Functionality**: Prints the contents of a byte array to the serial monitor with labels.
+- **Purpose**: Useful for debugging to visualize the data being processed.
+
+---
+
+## **11. Motion Control Functions**
+
+### **a. Go To Position**
+
+```cpp
+#define EPSILON 0.01
+
+void goTo(float x, float y) {
+  float motor1Target = (x + y) - pos[0];
+  float motor2Target = (y - x) - pos[1];
+
+  digitalWrite(motor1DirPin, motor1Target >= 0 ? HIGH : LOW);
+  digitalWrite(motor2DirPin, motor2Target >= 0 ? HIGH : LOW);
+
+  float maxSteps = max(abs(motor1Target), abs(motor2Target));
+  float motor1Speed = abs(motor1Target) / maxSteps;
+  float motor2Speed = abs(motor2Target) / maxSteps;
+
+  unsigned long stepDuration = 500; // Microseconds per step
+  unsigned long motor1StepInterval = stepDuration / motor1Speed;
+  unsigned long motor2StepInterval = stepDuration / motor2Speed;
+
+  unsigned long motor1PrevStepTime = 0;
+  unsigned long motor2PrevStepTime = 0;
+  float motor1Step = 0;
+  float motor2Step = 0;
+
+  while (abs(motor1Target - motor1Step) > EPSILON || abs(motor2Target - motor2Step) > EPSILON) {
+    unsigned long currentTime = micros();
+
+    // Motor 1 Control
+    if (abs(motor1Target - motor1Step) > EPSILON && ((currentTime - motor1PrevStepTime) >= motor1StepInterval)) {
+      digitalWrite(motor1StepPin, HIGH);
+      delayMicroseconds(1);
+      digitalWrite(motor1StepPin, LOW);
+      delayMicroseconds(1);
+
+      motor1Step += (motor1Target >= 0 ? 1.0 : -1.0)/SPU;
+      motor1PrevStepTime = currentTime;
+    }
+
+    // Motor 2 Control
+    if (abs(motor2Target - motor2Step) > EPSILON && ((currentTime - motor2PrevStepTime) >= motor2StepInterval)) {
+      digitalWrite(motor2StepPin, HIGH);
+      delayMicroseconds(1);
+      digitalWrite(motor2StepPin, LOW);
+      delayMicroseconds(1);
+
+      motor2Step += (motor2Target >= 0 ? 1.0 : -1.0)/SPU;
+      motor2PrevStepTime = currentTime;
+    }
+  }
+
+  pos[0] += motor1Step;
+  pos[1] += motor2Step;
+}
+```
+
+- **Functionality**: Moves the two stepper motors to reach the target `(x, y)` position.
+- **Parameters**:
+  - `x`: Target x-coordinate.
+  - `y`: Target y-coordinate.
+- **Operation**:
+  1. **Calculate Target Steps**:
+     - **Motor 1**: `(x + y) - pos[0]`
+     - **Motor 2**: `(y - x) - pos[1]`
+     - These calculations are based on the kinematics of the system, translating Cartesian coordinates to stepper motor steps.
+  2. **Set Motor Directions**:
+     - Sets the direction pins (`motor1DirPin` and `motor2DirPin`) based on whether the target step is positive or negative.
+  3. **Determine Step Intervals**:
+     - Calculates relative speeds for both motors to ensure synchronized movement.
+     - `stepDuration` defines the base time between steps in microseconds.
+     - `motor1StepInterval` and `motor2StepInterval` are calculated to adjust the stepping rate based on the required movement.
+  4. **Stepper Motors Control Loop**:
+     - Continuously steps each motor until the desired target is reached within a small margin defined by `EPSILON`.
+     - **Motor Control**:
+       - Toggles the step pin HIGH and LOW with a 1-microsecond delay to generate a pulse.
+       - Updates the `motor1Step` and `motor2Step` counters based on the direction and `SPU`.
+       - Updates the previous step time to manage the stepping intervals.
+  5. **Update Position**:
+     - After reaching the target, updates the `pos` array to reflect the new position.
+
+> **Note**: The stepping mechanism uses busy-waiting and may block other operations. For more efficient multitasking, consider using interrupts or non-blocking techniques.
+
+---
+
+## **12. Array Length Definitions**
+
+```cpp
+const int arrayLength = 7; // Fixed length for ACK
+```
+
+- **arrayLength**: Defines the fixed length of the acknowledgment array sent in `sendAck`.
+
+---
+
+## **13. Additional Helper Functions**
+
+### **a. Debug Printing (Commented Out)**
+
+Throughout the code, there are several commented-out `Serial.print` and `printArray` calls. These are typically used for debugging purposes to monitor the behavior of the system during development.
+
+---
+
+## **Summary**
+
+This Arduino sketch facilitates a modular and responsive system for controlling motors and a servo through serial commands. It leverages the COBS protocol to ensure reliable message framing, allowing for robust communication even in noisy environments. The system is designed to be extensible, allowing for additional events and functionalities to be easily incorporated by registering new event callbacks.
+
+**Key Features**:
+
+- **Stepper Motor Control**: Precise movement control of two stepper motors with synchronized stepping based on target positions.
+- **Servo Control**: Adjusts the position of a servo motor based on incoming commands.
+- **Serial Communication**: Efficiently handles incoming serial data using COBS encoding/decoding.
+- **Event-Driven Architecture**: Modular handling of different events through callback functions, making the system scalable.
+- **Visual Feedback**: Uses an LED to indicate system status and operations, providing immediate visual cues.
+- **Extensibility**: Designed to support up to 255 different events, allowing for significant scalability in functionality.
+
+**Potential Improvements**:
+
+- **Non-Blocking Motion Control**: Implementing a non-blocking approach to motor control to allow the system to handle other tasks concurrently.
+- **Dynamic Acknowledgments**: Enhancing the `sendAck` function to include variable-length replies based on callback responses.
+- **Error Handling**: Incorporating comprehensive error handling to manage unexpected inputs or hardware failures gracefully.
+- **Optimization**: Refining COBS encoding/decoding and message parsing for efficiency and reliability.
+
+---
+
+By understanding each component and function in this code, developers can modify, enhance, or troubleshoot the system effectively, tailoring it to specific application needs or integrating additional functionalities as required.
