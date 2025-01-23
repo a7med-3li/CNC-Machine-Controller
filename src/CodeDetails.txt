@@ -1,4 +1,8 @@
-This Arduino sketch is designed to control a system comprising two stepper motors and a servo motor, interfacing through serial communication using the Consistent Overhead Byte Stuffing (COBS) protocol for message encoding and decoding. The system listens for specific events sent over the serial connection and performs corresponding actions, such as moving motors to specified positions, controlling LED indicators, and adjusting servo positions.
+This Arduino sketch is designed to control a system comprising two stepper motors and a servo motor, 
+interfacing through serial communication using the Consistent Overhead Byte Stuffing (COBS) protocol 
+for message encoding and decoding. The system listens for specific events sent over the serial connection 
+and performs corresponding actions, such as moving motors to specified positions, controlling LED indicators, 
+and adjusting servo positions.
 
 Below is a comprehensive breakdown of the code, explaining each section and function in detail:
 
@@ -12,7 +16,8 @@ Below is a comprehensive breakdown of the code, explaining each section and func
 #include <Servo.h>
 ```
 
-- **Servo Library**: This library provides simple functions to control hobby servos. It allows the Arduino to send precise PWM (Pulse Width Modulation) signals to position the servo.
+- **Servo Library**: This library provides simple functions to control hobby servos. It allows the Arduino to send 
+precise PWM (Pulse Width Modulation) signals to position the servo.
 
 ### **b. Defining Constants and Pins**
 
@@ -21,7 +26,8 @@ Below is a comprehensive breakdown of the code, explaining each section and func
 #define PIN_SERVO D6
 ```
 
-- **SPU (Steps Per Unit)**: Represents the number of micro-steps required per unit of movement based on the pulley, belt, and stepper motor specifications.
+- **SPU (Steps Per Unit)**: Represents the number of micro-steps required per unit of movement based on the pulley, 
+belt, and stepper motor specifications.
   
   - **Calculation Explained**:
     - 20 teeth pulley
@@ -44,7 +50,8 @@ Servo servo;
 typedef uint8_t (*CallbackFunction)(uint8_t*, int, uint8_t*);
 ```
 
-- **CallbackFunction**: A pointer to a function that takes three parameters (`uint8_t*`, `int`, `uint8_t*`) and returns a `uint8_t`. This is used for event callbacks.
+- **CallbackFunction**: A pointer to a function that takes three parameters (`uint8_t*`, `int`, `uint8_t*`) and 
+returns a `uint8_t`. This is used for event callbacks.
 
 ```cpp
 struct EventCallback {
@@ -53,7 +60,8 @@ struct EventCallback {
 };
 ```
 
-- **EventCallback Structure**: Associates an event name (`String event`) with its corresponding callback function (`CallbackFunction callback`).
+- **EventCallback Structure**: Associates an event name (`String event`) with its corresponding callback function 
+(`CallbackFunction callback`).
 
 ---
 
@@ -80,7 +88,8 @@ const int motor2DirPin = D7;
 const int enablePin = D1;
 ```
 
-- **Enable Pin**: Controls the enable state of the stepper drivers. Typically, setting this pin low (`0`) enables the motors, and high (`1`) disables them.
+- **Enable Pin**: Controls the enable state of the stepper drivers. Typically, setting this pin low (`0`) 
+enables the motors, and high (`1`) disables them.
 
 ---
 
@@ -139,7 +148,8 @@ on("moveTowardsOrigin", moveTowardsOrigin);
 on("setOrigin", setOrigin);
 ```
 
-- **Event Registration**: Associates specific event names with their corresponding callback functions. This allows the system to respond to different commands received over serial communication.
+- **Event Registration**: Associates specific event names with their corresponding callback functions. 
+This allows the system to respond to different commands received over serial communication.
 
 ### **d. Pin Modes Configuration**
 
@@ -152,7 +162,8 @@ pinMode(enablePin, OUTPUT);
 pinMode(PIN_LED, OUTPUT);
 ```
 
-- **Setting Pin Modes**: Configures motor control pins and the enable pin as outputs. Also sets the LED indicator pin as an output.
+- **Setting Pin Modes**: Configures motor control pins and the enable pin as outputs. Also sets the LED 
+indicator pin as an output.
 
 ### **e. Startup Indicator**
 
@@ -160,7 +171,8 @@ pinMode(PIN_LED, OUTPUT);
 startupIndicator();
 ```
 
-- **startupIndicator Function**: Provides visual feedback (flashing LED) to indicate that the system has successfully initialized.
+- **startupIndicator Function**: Provides visual feedback (flashing LED) to indicate that the system has 
+successfully initialized.
 
 ---
 
@@ -172,7 +184,8 @@ void loop() {
 }
 ```
 
-- **Continuous Serial Reading**: The `loop` function continuously calls `readSerial()`, ensuring that the system is always ready to receive and process incoming serial commands.
+- **Continuous Serial Reading**: The `loop` function continuously calls `readSerial()`, ensuring that the 
+system is always ready to receive and process incoming serial commands.
 
 ---
 
@@ -189,7 +202,8 @@ void startupIndicator() {
 }
 ```
 
-- **Visual Feedback**: Flashes the LED connected to `PIN_LED` three times with 200ms intervals to indicate that the system has started successfully.
+- **Visual Feedback**: Flashes the LED connected to `PIN_LED` three times with 200ms intervals to indicate 
+that the system has started successfully.
 
 ---
 
@@ -250,7 +264,8 @@ uint8_t moveTowardsOrigin(uint8_t* payload, int length, uint8_t* reply) {
 }
 ```
 
-- **Functionality**: Adjusts the current position towards the origin (0,0) by increments/decrements of 10 units based on the current position's sign.
+- **Functionality**: Adjusts the current position towards the origin (0,0) by increments/decrements of 
+10 units based on the current position's sign.
 - **Operation**:
   - If `x` is negative, increases it by 10; otherwise, decreases by 10.
   - Similarly adjusts `y`.
@@ -280,7 +295,8 @@ uint8_t moveServo(uint8_t* payload, int length, uint8_t* reply) {
 
 - **Functionality**: Moves the servo to a specified position.
 - **Operation**:
-  - Reads a 4-byte integer from the payload starting at index `0`, representing the desired servo position in microseconds.
+  - Reads a 4-byte integer from the payload starting at index `0`, representing the desired servo position 
+  in microseconds.
   - Sends the value to the servo using `servo.writeMicroseconds(angle)`.
 
 ### **f. Go To Position**
@@ -372,7 +388,8 @@ void readSerial() {
      - **Payload Length (`payloadLength`)**: Next byte indicates the length of the payload.
      - **Payload Data (`payload`)**: Extracts the payload data based on `payloadLength`.
      - **Message Count (`msgCount`)**: Final byte indicates the message count for acknowledgment.
-  5. **Event Triggering**: Converts the event name from bytes to a `String` and calls `triggerEvent` with the event name, payload, and message count.
+  5. **Event Triggering**: Converts the event name from bytes to a `String` and calls `triggerEvent` with the event 
+  name, payload, and message count.
   6. **Buffer Reset**: Resets `bufferIndex` to prepare for the next incoming message.
 
 ### **c. Event Handling**
@@ -457,7 +474,9 @@ void sendAck(uint8_t msgCount, uint8_t* reply, uint8_t length) {
     - `0x0A`: Line feed character to signify the end.
   - **Sending ACK**: Writes the `byteArray` containing the acknowledgment to the serial port.
 
-> **Note**: The current implementation of `sendAck` sends a fixed-length acknowledgment without including the actual `reply` payload from the callback functions. The commented-out sections suggest plans to include variable-length replies, but these are not active in the current code.
+> **Note**: The current implementation of `sendAck` sends a fixed-length acknowledgment without including 
+the actual `reply` payload from the callback functions. The commented-out sections suggest plans to include 
+variable-length replies, but these are not active in the current code.
 
 ---
 
@@ -550,7 +569,8 @@ void cobs_print(const String& message) {
 ```
 
 - **Functionality**: Encodes a `String` message using COBS and sends it over serial.
-- **Note**: The `TODO` comment suggests that this function might have bugs and needs further attention. Specifically, handling null terminators and ensuring the correct encoding length might be areas of concern.
+- **Note**: The `TODO` comment suggests that this function might have bugs and needs further attention. 
+Specifically, handling null terminators and ensuring the correct encoding length might be areas of concern.
 
 ---
 
@@ -695,13 +715,16 @@ void goTo(float x, float y) {
   1. **Calculate Target Steps**:
      - **Motor 1**: `(x + y) - pos[0]`
      - **Motor 2**: `(y - x) - pos[1]`
-     - These calculations are based on the kinematics of the system, translating Cartesian coordinates to stepper motor steps.
+     - These calculations are based on the kinematics of the system, translating Cartesian coordinates to 
+     stepper motor steps.
   2. **Set Motor Directions**:
-     - Sets the direction pins (`motor1DirPin` and `motor2DirPin`) based on whether the target step is positive or negative.
+     - Sets the direction pins (`motor1DirPin` and `motor2DirPin`) based on whether the target step is positive 
+     or negative.
   3. **Determine Step Intervals**:
      - Calculates relative speeds for both motors to ensure synchronized movement.
      - `stepDuration` defines the base time between steps in microseconds.
-     - `motor1StepInterval` and `motor2StepInterval` are calculated to adjust the stepping rate based on the required movement.
+     - `motor1StepInterval` and `motor2StepInterval` are calculated to adjust the stepping rate based on the 
+     required movement.
   4. **Stepper Motors Control Loop**:
      - Continuously steps each motor until the desired target is reached within a small margin defined by `EPSILON`.
      - **Motor Control**:
@@ -711,7 +734,8 @@ void goTo(float x, float y) {
   5. **Update Position**:
      - After reaching the target, updates the `pos` array to reflect the new position.
 
-> **Note**: The stepping mechanism uses busy-waiting and may block other operations. For more efficient multitasking, consider using interrupts or non-blocking techniques.
+> **Note**: The stepping mechanism uses busy-waiting and may block other operations. For more efficient multitasking, 
+consider using interrupts or non-blocking techniques.
 
 ---
 
@@ -729,30 +753,42 @@ const int arrayLength = 7; // Fixed length for ACK
 
 ### **a. Debug Printing (Commented Out)**
 
-Throughout the code, there are several commented-out `Serial.print` and `printArray` calls. These are typically used for debugging purposes to monitor the behavior of the system during development.
+Throughout the code, there are several commented-out `Serial.print` and `printArray` calls. These are typically 
+used for debugging purposes to monitor the behavior of the system during development.
 
 ---
 
 ## **Summary**
 
-This Arduino sketch facilitates a modular and responsive system for controlling motors and a servo through serial commands. It leverages the COBS protocol to ensure reliable message framing, allowing for robust communication even in noisy environments. The system is designed to be extensible, allowing for additional events and functionalities to be easily incorporated by registering new event callbacks.
+This Arduino sketch facilitates a modular and responsive system for controlling motors and a servo through serial 
+commands. It leverages the COBS protocol to ensure reliable message framing, allowing for robust communication even 
+in noisy environments. The system is designed to be extensible, allowing for additional events and functionalities 
+to be easily incorporated by registering new event callbacks.
 
 **Key Features**:
 
-- **Stepper Motor Control**: Precise movement control of two stepper motors with synchronized stepping based on target positions.
+- **Stepper Motor Control**: Precise movement control of two stepper motors with synchronized stepping based on 
+target positions.
 - **Servo Control**: Adjusts the position of a servo motor based on incoming commands.
 - **Serial Communication**: Efficiently handles incoming serial data using COBS encoding/decoding.
-- **Event-Driven Architecture**: Modular handling of different events through callback functions, making the system scalable.
+- **Event-Driven Architecture**: Modular handling of different events through callback functions, making 
+the system scalable.
 - **Visual Feedback**: Uses an LED to indicate system status and operations, providing immediate visual cues.
-- **Extensibility**: Designed to support up to 255 different events, allowing for significant scalability in functionality.
+- **Extensibility**: Designed to support up to 255 different events, allowing for significant scalability 
+in functionality.
 
 **Potential Improvements**:
 
-- **Non-Blocking Motion Control**: Implementing a non-blocking approach to motor control to allow the system to handle other tasks concurrently.
-- **Dynamic Acknowledgments**: Enhancing the `sendAck` function to include variable-length replies based on callback responses.
-- **Error Handling**: Incorporating comprehensive error handling to manage unexpected inputs or hardware failures gracefully.
+- **Non-Blocking Motion Control**: Implementing a non-blocking approach to motor control to allow the system 
+to handle other tasks concurrently.
+- **Dynamic Acknowledgments**: Enhancing the `sendAck` function to include variable-length replies based 
+on callback responses.
+- **Error Handling**: Incorporating comprehensive error handling to manage unexpected inputs or hardware 
+failures gracefully.
 - **Optimization**: Refining COBS encoding/decoding and message parsing for efficiency and reliability.
 
 ---
 
-By understanding each component and function in this code, developers can modify, enhance, or troubleshoot the system effectively, tailoring it to specific application needs or integrating additional functionalities as required.
+By understanding each component and function in this code, developers can modify, enhance, or troubleshoot 
+the system effectively, tailoring it to specific application needs or integrating additional functionalities 
+as required.
